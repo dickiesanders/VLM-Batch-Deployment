@@ -46,6 +46,15 @@ def run_qwen2_5_vl(questions: list[str], modality: str) -> ModelRequestData:
     )
 ```
 
+  * Here's how look the Qwen-2.5-VL prompt:
+  ```
+  <|im_start|>system
+  You are a helpful assistant.<|im_end|>
+  <|im_start|>user
+  <|vision_start|><|image_pad|><|vision_end|>{message}.<|im_end|>
+  <|im_start|>assistant
+  ```
+
   * Sources:
     * [HF collections](https://huggingface.co/collections/Qwen/qwen25-vl-6795ffac22b334a837c0f9a5)
     * [Paper](https://arxiv.org/pdf/2502.13923)
@@ -87,6 +96,3 @@ def run_qwen2_5_vl(questions: list[str], modality: str) -> ModelRequestData:
 * https://universe.roboflow.com/amyf467-gmail-com/invoice-processing
 
 
-## Extraction data schema:
-
-* 
