@@ -20,9 +20,9 @@ class Info(BaseModel):
 
 
 class Amount(BaseModel):
-    sub_total: int | None
-    total: int | None
-    vat: int | None
+    sub_total: float | None
+    total: float | None
+    vat: float | None
     currency: str | None
 
 

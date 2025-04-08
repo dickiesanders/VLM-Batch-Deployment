@@ -2,24 +2,20 @@ PROMPT = """
 You are responsible of extracting data from invoice documents.
 Here are some informations about the data you need to extract:
 
-Invoice Metadata:
+Dates:
     * invoiced_date: The date when the invoice was issued (format: YYYY-MM-DD)
     * due_date: The payment due date (format: YYYY-MM-DD)
 
-Sender Information (from_info):
-    * email: Sender's email address
-    * phone_number: Sender's contact phone number
+Sender and Recipient Information:
+    * email: email address
+    * phone_number: contact phone number
 
 Address:
     * street: Street address
-    * city: Sender's city
-    * country: Sender's country
+    * city: city
+    * country: country in 2 letters (US, FR, SP, etc...)
 
-Recipient Information (to_info):
-    * email: Recipient's email address
-    * phone_number: Recipient's contact phone number
-
-Financial Amounts (amount):
+Financial Amounts:
 
     * sub_total: Amount before taxes
     * total: Final amount to pay (including taxes)

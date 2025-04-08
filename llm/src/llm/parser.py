@@ -12,7 +12,7 @@ from llm.settings import MODEL_NAME
 from llm.prompts import PROMPT
 
 
-def parse_doc(images: list[Image.Image]) -> dict:
+def parse_doc(images: list[Image.Image]):
     model_class, processor_class = get_model_and_processor_class(model_name=MODEL_NAME)
     model = get_vision_model(
         model_name=MODEL_NAME,
@@ -71,10 +71,7 @@ if __name__ == "__main__":
     from llm.settings import DOCUMENTS_DIR
 
     timestamp = time()
-    images = [
-        Image.open(DOCUMENTS_DIR / "image_0.jpeg").convert("RGB")
-        for image_path in DOCUMENTS_DIR.iterdir()
-    ]
+    images = [Image.open(DOCUMENTS_DIR / "image_0.jpeg").convert("RGB")]
     output = parse_doc(images)
     print(output)
     print("It took: ", time() - timestamp, "secondes.")
