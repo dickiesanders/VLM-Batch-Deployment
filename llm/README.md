@@ -59,6 +59,7 @@ def run_qwen2_5_vl(questions: list[str], modality: str) -> ModelRequestData:
     * [HF collections](https://huggingface.co/collections/Qwen/qwen25-vl-6795ffac22b334a837c0f9a5)
     * [Paper](https://arxiv.org/pdf/2502.13923)
     * [Demo](https://huggingface.co/spaces/Qwen/Qwen2.5-VL-72B-Instruct)
+    * [README](https://github.com/QwenLM/Qwen2.5-VL/blob/main/README.md)
   
 * SmolVLM & SmolVLM2:
   * Small and memory efficient

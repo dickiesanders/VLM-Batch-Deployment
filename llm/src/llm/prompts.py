@@ -1,36 +1,41 @@
-PROMPT = """
-You are responsible of extracting data from invoice documents.
-Here are some informations about the data you need to extract:
+QWEN_25_VL_7B_INSTRUCT_PROMPT = """
+<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n"
+"<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>"
+"{instruction}<|im_end|>\n"
+"<|im_start|>assistant\n"
+""".strip()
 
-Dates:
-    * invoiced_date: The date when the invoice was issued (format: YYYY-MM-DD)
-    * due_date: The payment due date (format: YYYY-MM-DD)
-
-Sender and Recipient Information:
-    * email: email address
-    * phone_number: contact phone number
-
-Address:
-    * street: Street address
-    * city: city
-    * country: country in 2 letters (US, FR, SP, etc...)
-
-Financial Amounts:
-
-    * sub_total: Amount before taxes
-    * total: Final amount to pay (including taxes)
-    * vat: VAT/tax amount (if specified separately)
-    * currency: Currency code (e.g., USD, EUR, GBP)
-
----
-
-Addtional instructions:
-    * Mark fields as null if they cannot be found in the document
-    * Normalize all dates to ISO format (YYYY-MM-DD)
-    * Extract currency symbols (€, $, £) and convert to standard currency codes
-    * Handle both numerical and written amounts (e.g., "100" vs "one hundred")
-    * Preserve decimal points for monetary values when present
-    * Normalize phone numbers to international format when possible
-
+INSTRUCTION = """
+Extract the data from this invoice.
 Return your response as a valid JSON object.
+Here's an example of the expected JSON output: 
+
+{
+    "invoiced_date": 09/04/2025  #format DD/MM/YYYY
+    "due_date": 09/04/2025  #format DD/MM/YYYY
+    "from_info": {
+        "email": "jeremya@gmail.com",
+        "phone_number": "+33645789564",
+        "address": {
+            "street": "Chemin des boulangers",
+            "city": "Bourges",
+            "country": FR # 2 letters country
+        },
+    "to_info": {
+        "email": "igordosgor@gmail.com",
+        "phone_number": "+33645789564",
+        "address": {
+            "street": "Chemin des boulangers",
+            "city": "New York",
+            "country": US
+        },
+    }
+    "amount": {
+        "sub_total": 1450.4 # Before taxes
+        "total": 1,740.48 # After taxes
+        "vat": 0.2 # Pourcentage
+        "currency": USD # 3 letters code (USD, EUR, ...)
+    }
+}
+
 """.strip()
