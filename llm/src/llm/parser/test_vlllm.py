@@ -20,7 +20,7 @@ json_schema = Invoice.model_json_schema()
 
 guided_decoding_params = GuidedDecodingParams(json=json_schema)
 sampling_params = SamplingParams(
-    guided_decoding=guided_decoding_params,
+    # guided_decoding=guided_decoding_params,
     max_tokens=4096,
 )
 

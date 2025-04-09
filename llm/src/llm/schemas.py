@@ -27,8 +27,8 @@ class Amount(BaseModel):
 
 
 class Invoice(StructuredOutputSchema):
-    invoiced_date: date | None
-    due_date: date | None
+    invoiced_date: str | None
+    due_date: str | None
     from_info: Info
     to_info: Info
     amount: Amount

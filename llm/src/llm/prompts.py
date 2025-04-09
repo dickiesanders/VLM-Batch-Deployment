@@ -1,8 +1,8 @@
 QWEN_25_VL_7B_INSTRUCT_PROMPT = """
-<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n"
-"<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>"
-"{instruction}<|im_end|>\n"
-"<|im_start|>assistant\n"
+<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n
+<|im_start|>user\n<|vision_start|>{placeholder}<|vision_end|>
+{instruction}<|im_end|>\n
+<|im_start|>assistant\n
 """.strip()
 
 INSTRUCTION = """
