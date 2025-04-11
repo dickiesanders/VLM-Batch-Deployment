@@ -97,3 +97,8 @@ def run_qwen2_5_vl(questions: list[str], modality: str) -> ModelRequestData:
 * https://universe.roboflow.com/amyf467-gmail-com/invoice-processing
 
 
+## Experimentations:
+
+* Install flash-attention: `pip install flash-attn --no-build-isolation`
+  * Seems there's a bug with flash-attn and vllm-vision: flash-attn is actually not used.  
+
