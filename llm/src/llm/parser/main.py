@@ -34,9 +34,10 @@ def main():
         images=images,
         prompt=prompts.QWEN_25_VL_INSTRUCT_PROMPT.format(prompts.INSTRUCTION),
     )
+    del model, sampling_params  # Clear memory
     LOGGER.info("Start structured output extraction.")
     structured_outputs = extract_structured_outputs(outputs=outputs)
-    data_models = validate_structured_outputs(
+    validated_structured_outputs = validate_structured_outputs(
         structured_outputs=structured_outputs, schema=schemas.Invoice
     )
     LOGGER.info(
@@ -46,7 +47,9 @@ def main():
     )
     with TemporaryDirectory() as temp_dir:
         parquet_path = Path(temp_dir) / "data.parquet"
-        export_to_parquet(models=data_models, output_path=parquet_path)
+        export_to_parquet(
+            structured_outputs=validated_structured_outputs, output_path=parquet_path
+        )
         export_to_s3(parquet_path=parquet_path)
     LOGGER.info("Batch job finished succesfully.")
 
@@ -68,6 +71,9 @@ def load_images(
     except ClientError as e:
         LOGGER.error("Issue when loading images from s3: %s.", str(e))
         raise ClientError(str(e)) from e
+    except Exception as e:
+        LOGGER.error("Something went wrong when loading the images from AWS S3: %s", e)
+        raise
 
 
 def load_model(model_name: str) -> tuple[LLM, SamplingParams]:
@@ -98,7 +104,6 @@ def run_inference(
         for image in images
     ]
     outputs = model.generate(inputs, sampling_params=sampling_params)
-    del model  # clear memory
     return [output.outputs[0].text for output in outputs]
 
 
@@ -119,17 +124,21 @@ def extract_structured_outputs(outputs: list[str]) -> list[dict[str, Any]]:
 def validate_structured_outputs(
     structured_outputs: list[dict[str, Any]],
     schema: Type[BaseModel] = schemas.BaseModel,
-) -> list[BaseModel]:
-    models = [
-        schema.model_validate(structured_output)
-        for structured_output in structured_outputs
-    ]
-    return models
+) -> list[dict[str, Any]]:
+    """NOTES: Need more work with Pydantic validation.
+    There's no feature in Pydantic to return default_value() if not validated.
+    """
+    # return [
+    #     schema.model_validate(structured_output).model_dump()
+    #     for structured_output in structured_outputs
+    # ]
+    return structured_outputs
 
 
-def export_to_parquet(models: list[BaseModel], output_path: Path) -> None:
-    dicts = [model.model_dump() for model in models]
-    pd.DataFrame(dicts).to_parquet(output_path)
+def export_to_parquet(
+    structured_outputs: list[dict[str, Any]], output_path: Path
+) -> None:
+    pd.DataFrame(structured_outputs).to_parquet(output_path)
 
 
 def export_to_s3(
