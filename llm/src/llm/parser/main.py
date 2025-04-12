@@ -9,11 +9,10 @@ from PIL import Image
 import boto3
 from botocore.exceptions import ClientError
 from vllm import LLM, SamplingParams
-from pydantic import BaseModel
 import pandas as pd
 
 from llm.settings import settings
-from llm.parser import prompts, schemas
+from llm.parser import prompts
 
 LOGGER = logging.getLogger(__name__)
 
@@ -25,6 +24,7 @@ def main():
         s3_bucket=settings.s3_bucket,
         s3_images_folder_uri=settings.s3_preprocessed_images_dir_prefix,
     )
+    LOGGER.info("Number of images loaded from S3: %s", len(images))
     LOGGER.info("Start loading model: %s", settings.model_name)
     model, sampling_params = load_model(model_name=settings.model_name)
     LOGGER.info("Start inference on %s images.", len(images))
@@ -32,25 +32,25 @@ def main():
         model=model,
         sampling_params=sampling_params,
         images=images,
-        prompt=prompts.QWEN_25_VL_INSTRUCT_PROMPT.format(prompts.INSTRUCTION),
+        prompt=prompts.QWEN_25_VL_INSTRUCT_PROMPT.format(
+            instruction=prompts.INSTRUCTION
+        ),
     )
     del model, sampling_params  # Clear memory
     LOGGER.info("Start structured output extraction.")
     structured_outputs = extract_structured_outputs(outputs=outputs)
-    validated_structured_outputs = validate_structured_outputs(
-        structured_outputs=structured_outputs, schema=schemas.Invoice
-    )
+    # validated_structured_outputs = validate_structured_outputs(
+    #     structured_outputs=structured_outputs,
+    # )
     LOGGER.info(
         "Start exporting data to Bucket: %s, at %s",
         settings.s3_bucket,
         settings.s3_processed_parquet_prefix,
     )
     with TemporaryDirectory() as temp_dir:
-        parquet_path = Path(temp_dir) / "data.parquet"
-        export_to_parquet(
-            structured_outputs=validated_structured_outputs, output_path=parquet_path
-        )
-        export_to_s3(parquet_path=parquet_path)
+        data_path = Path(temp_dir) / "data.jsonl"
+        export_to_jsonl(structured_outputs=structured_outputs, output_path=data_path)
+        export_to_s3(data_path=data_path)
     LOGGER.info("Batch job finished succesfully.")
 
 
@@ -123,7 +123,7 @@ def extract_structured_outputs(outputs: list[str]) -> list[dict[str, Any]]:
 
 def validate_structured_outputs(
     structured_outputs: list[dict[str, Any]],
-    schema: Type[BaseModel] = schemas.BaseModel,
+    # schema: Type[BaseModel] = schemas.BaseModel,
 ) -> list[dict[str, Any]]:
     """NOTES: Need more work with Pydantic validation.
     There's no feature in Pydantic to return default_value() if not validated.
@@ -141,19 +141,23 @@ def export_to_parquet(
     pd.DataFrame(structured_outputs).to_parquet(output_path)
 
 
+def export_to_jsonl(
+    structured_outputs: list[dict[str, Any]], output_path: Path
+) -> None:
+    with open(output_path, "w") as f:
+        for item in structured_outputs:
+            json.dump(item, f)
+            f.write("\n")
+
+
 def export_to_s3(
-    parquet_path: Path,
+    data_path: Path,
     s3_bucket: str = settings.s3_bucket,
     s3_processed_parquet_prefix: str = settings.s3_processed_parquet_prefix,
 ) -> None:
-    if parquet_path.suffix != ".parquet":
-        LOGGER.error(
-            "Wrong processed dataset format. Current format: %s", str(parquet_path)
-        )
-        raise ValueError
     try:
         s3 = boto3.client("s3")
-        s3.upload_file(str(parquet_path), s3_bucket, s3_processed_parquet_prefix)
+        s3.upload_file(str(data_path), s3_bucket, s3_processed_parquet_prefix)
     except ClientError as e:
         LOGGER.error("Upload file to S3 failed. Error: %s", str(e))
         raise ClientError(str(e)) from e

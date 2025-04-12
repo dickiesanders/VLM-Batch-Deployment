@@ -5,7 +5,9 @@ from pydantic import Field
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(
+        env_file=".env", extra="ignore"
+    )  # extra="ignore" for AWS credentials
 
     # Model config
     model_name: str = "Qwen/Qwen2.5-VL-3B-Instruct"

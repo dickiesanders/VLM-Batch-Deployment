@@ -85,6 +85,6 @@ def run_qwen2_5_vl(questions: list[str], modality: str) -> ModelRequestData:
 * https://universe.roboflow.com/amyf467-gmail-com/invoice-processing
 
 
-## Extraction data schema:
+## Structured outputs processing
 
-* 
+* Funny enough, there's no Pydantic core feature to return default_value() if field not validated
