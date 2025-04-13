@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # AWS S3
     s3_bucket: str
     s3_preprocessed_images_dir_prefix: str
-    s3_processed_parquet_prefix: str
+    s3_processed_dataset_prefix: str
 
 
 settings = Settings()
