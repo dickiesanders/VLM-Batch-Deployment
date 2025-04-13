@@ -14,7 +14,7 @@ from pydantic import BaseModel
 import pandas as pd
 
 from llm.settings import settings
-from llm.parser import prompts
+from llm.parser import prompts, schemas
 
 LOGGER = logging.getLogger(__name__)
 
