@@ -1,6 +1,7 @@
-from typing import Any
 from datetime import date
-from pydantic import BaseModel, field_validator, ValidationInfo, Field
+import re
+
+from pydantic import BaseModel, field_validator, ValidationInfo
 
 
 class Address(BaseModel):
@@ -8,25 +9,22 @@ class Address(BaseModel):
     city: str | None = None
     country: str | None = None
 
-    # @field_validator("street", "city", "country", mode="before")
-    # @classmethod
-    # def validate_string_fields(cls, value: Any, info: ValidationInfo) -> Any:
-    #     if value == "" or value is None:
-    #         return cls.model_fields[info.field_name].get_default()
-    #     return value
-
 
 class Info(BaseModel):
     email: str | None = None
     phone_number: str | None = None
     address: Address
 
-    # @field_validator("email", "phone_number", mode="before")
-    # @classmethod
-    # def validate_contact_fields(cls, value: Any, info: ValidationInfo) -> Any:
-    #     if value == "" or value is None:
-    #         return cls.model_fields[info.field_name].get_default()
-    #     return value
+    @field_validator("email", mode="before")
+    @classmethod
+    def validate_email(cls, email: str | None, info: ValidationInfo) -> str | None:
+        if not email:
+            return None
+        email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+        if not re.match(email_pattern, email):
+            return cls.model_fields[info.field_name].get_default()
+        else:
+            return email
 
 
 class Amount(BaseModel):
@@ -51,18 +49,11 @@ class Amount(BaseModel):
 
 
 class Invoice(BaseModel):
-    invoiced_date: date | None = None
-    due_date: date | None = None
+    invoiced_date: str | None = None  # TODO: convert to date
+    due_date: str | None = None  # TODO: convert to date
     from_info: Info
     to_info: Info
     amount: Amount
-
-    # @field_validator("invoiced_date", "due_date", mode="before")
-    # @classmethod
-    # def validate_date(cls, value: Any, info: ValidationInfo) -> Any:
-    #     if value == "" or value is None:
-    #         return cls.model_fields[info.field_name].get_default()
-    #     return value
 
 
 if __name__ == "__main__":
@@ -95,5 +86,5 @@ if __name__ == "__main__":
         },
     }
 
-    invoice = Invoice.model_validate(invoice_example)   
+    invoice = Invoice.model_validate(invoice_example)
     print(invoice)
