@@ -9,6 +9,7 @@ from PIL import Image
 import boto3
 from botocore.exceptions import ClientError
 from vllm import LLM, SamplingParams
+from vllm.sampling_params import GuidedDecodingParams
 from pydantic import BaseModel
 import pandas as pd
 
@@ -26,7 +27,9 @@ def main():
         s3_images_folder_uri=settings.s3_preprocessed_images_dir_prefix,
     )
     LOGGER.info("Start loading model: %s", settings.model_name)
-    model, sampling_params = load_model(model_name=settings.model_name)
+    model, sampling_params = load_model(
+        model_name=settings.model_name, schema=schemas.Invoice
+    )
     LOGGER.info("Start inference on %s images.", len(images))
     outputs = run_inference(
         model=model,
@@ -76,7 +79,9 @@ def load_images(
         raise
 
 
-def load_model(model_name: str) -> tuple[LLM, SamplingParams]:
+def load_model(
+    model_name: str, schema: Type[BaseModel] | None
+) -> tuple[LLM, SamplingParams]:
     llm = LLM(
         model=model_name,
         gpu_memory_utilization=settings.gpu_memory_utilisation,
@@ -86,6 +91,9 @@ def load_model(model_name: str) -> tuple[LLM, SamplingParams]:
         disable_mm_preprocessor_cache=True,
     )
     sampling_params = SamplingParams(
+        guided_decoding=GuidedDecodingParams(json=schema.model_json_schema())
+        if schema
+        else None,
         max_tokens=settings.max_tokens,
         temperature=settings.temperature,
     )
