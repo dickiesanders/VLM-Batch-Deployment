@@ -22,7 +22,7 @@ LOGGER = logging.getLogger(__name__)
 def main():
     LOGGER.info("Start batch job.")
     LOGGER.info("Start loading images.")
-    images = load_images(
+    image_ids, images = load_images(
         s3_bucket=settings.s3_bucket,
         s3_images_folder_uri=settings.s3_preprocessed_images_dir_prefix,
     )
@@ -43,13 +43,16 @@ def main():
     del model, sampling_params  # Clear memory
     LOGGER.info("Start structured output extraction.")
     structured_outputs = extract_structured_outputs(outputs=outputs)
-    # validated_structured_outputs = validate_structured_outputs(
+    # structured_outputs = validate_structured_outputs(
     #     structured_outputs=structured_outputs,
     # )
+    structured_outputs = link_ids_to_data(
+        structured_outputs=structured_outputs, ids=image_ids
+    )
     LOGGER.info(
         "Start exporting data to Bucket: %s, at %s",
         settings.s3_bucket,
-        settings.s3_processed_parquet_prefix,
+        settings.s3_processed_dataset_prefix,
     )
     with TemporaryDirectory() as temp_dir:
         data_path = Path(temp_dir) / "data.jsonl"
@@ -61,17 +64,21 @@ def main():
 def load_images(
     s3_bucket: str,
     s3_images_folder_uri: str,
-) -> list[Image.Image]:
+) -> tuple[list[str], list[Image.Image]]:
     try:
         s3 = boto3.client("s3")
         response = s3.list_objects_v2(Bucket=s3_bucket, Prefix=s3_images_folder_uri)
+
         images: list[Image.Image] = []
+        filenames: list[str] = []
+
         for obj in response["Contents"]:
             key = obj["Key"]
+            filenames.append(key)
             response = s3.get_object(Bucket=s3_bucket, Key=key)
             image_data = response["Body"].read()
             images.append(Image.open(BytesIO(image_data)))
-        return images
+        return filenames, images
     except ClientError as e:
         LOGGER.error("Issue when loading images from s3: %s.", str(e))
         raise ClientError(str(e)) from e
@@ -137,10 +144,20 @@ def validate_structured_outputs(
     """NOTES: Need more work with Pydantic validation.
     There's no feature in Pydantic to return default_value() if not validated.
     """
-    # return [
+    # models = [
     #     schema.model_validate(structured_output).model_dump()
     #     for structured_output in structured_outputs
     # ]
+    return structured_outputs
+
+
+def link_ids_to_data(
+    structured_outputs: list[dict[str, Any]],
+    ids: list[str],
+) -> list[dict[str, Any]]:
+    """After process, link back the ids to data."""
+    for output_id, output in zip(ids, structured_outputs):
+        output["id"] = output_id
     return structured_outputs
 
 
@@ -162,11 +179,11 @@ def export_to_jsonl(
 def export_to_s3(
     data_path: Path,
     s3_bucket: str = settings.s3_bucket,
-    s3_processed_parquet_prefix: str = settings.s3_processed_parquet_prefix,
+    s3_processed_dataset_prefix: str = settings.s3_processed_dataset_prefix,
 ) -> None:
     try:
         s3 = boto3.client("s3")
-        s3.upload_file(str(data_path), s3_bucket, s3_processed_parquet_prefix)
+        s3.upload_file(str(data_path), s3_bucket, s3_processed_dataset_prefix)
     except ClientError as e:
         LOGGER.error("Upload file to S3 failed. Error: %s", str(e))
         raise ClientError(str(e)) from e
