@@ -88,3 +88,14 @@ def run_qwen2_5_vl(questions: list[str], modality: str) -> ModelRequestData:
 ## Structured outputs processing
 
 * Funny enough, there's no Pydantic core feature to return default_value() if field not validated
+
+## Batch Deployment
+
+* Job stuck in RUNNABLE:
+  * CAREFUL: to run the job on AWS, you need the appropriate quotas. If you want to run a g6.xlarge EC2 instance, you need at least 4 vCPUs (8vCPUs for 2 instances then). Check increase quota request on the [documentation](https://docs.aws.amazon.com/ec2/latest/instancetypes/ec2-instance-quotas.html#on-demand-instance-quotas).
+  * AWS Batch requires 3 types of role:
+    * BatchServiceRolePolicy: basic AWS Batch Role that gives it access to all AWS ecosystem, such as AutoScaling, ECS, EKS, and so on...
+    * ecsTaskExecutionRole: since AWS Batch runs in an ECS Cluster, ECS agents require the relative permissions
+    * jobRole: AWS permissions relative to the Job itself, such as access to S3
+* EC2 orchestrator:
+  * AWS Batch allocates the required (declared in job definition/submition) 

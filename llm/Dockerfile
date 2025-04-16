@@ -23,15 +23,15 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Then, use a final image without uv
 FROM python:3.12-slim-bookworm
-# It is important to use the image that matches the builder, as the path to the
-# Python executable must be the same, e.g., using `python:3.11-slim-bookworm`
-# will fail.
 
 # Copy the application from the builder
 COPY --from=builder --chown=app:app /app /app
 
+# vLLM requires some basic compilation tools
+RUN apt-get update && apt-get install -y build-essential
+
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 
-# The module llm is recognized as a module that can run on its own
-CMD ["python", "llm"]
+# Executable package. Check pyproject.toml
+CMD ["run-batch-job"]

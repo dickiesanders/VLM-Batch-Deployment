@@ -23,7 +23,7 @@ build-backend = "hatchling.build"
 packages = ["src/llm"]
 
 [project.scripts]
-llm = "llm.__main__:main"
+run-batch-job = "llm.__main__:main"
 
 [dependency-groups]
 dev = [
