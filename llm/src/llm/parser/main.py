@@ -144,11 +144,12 @@ def validate_structured_outputs(
     """NOTES: Need more work with Pydantic validation.
     There's no feature in Pydantic to return default_value() if not validated.
     """
+    pass
     # models = [
     #     schema.model_validate(structured_output).model_dump()
     #     for structured_output in structured_outputs
     # ]
-    return structured_outputs
+    # return structured_outputs
 
 
 def link_ids_to_data(

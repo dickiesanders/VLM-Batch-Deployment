@@ -89,6 +89,15 @@ def run_qwen2_5_vl(questions: list[str], modality: str) -> ModelRequestData:
 
 * Funny enough, there's no Pydantic core feature to return default_value() if field not validated
 
+## VLM Experimentations:
+
+* Install flash-attention: `pip install flash-attn --no-build-isolation`
+  * Seems there's a bug with flash-attn and vllm-vision: flash-attn is actually not used.  
+* GuidedSampling:
+  * Guide the text generation to JSON
+  * But takes more time
+  * Qwen-2.5-vl already fine-tuned for structured output.
+
 ## Batch Deployment
 
 * Job stuck in RUNNABLE:
@@ -98,4 +107,4 @@ def run_qwen2_5_vl(questions: list[str], modality: str) -> ModelRequestData:
     * ecsTaskExecutionRole: since AWS Batch runs in an ECS Cluster, ECS agents require the relative permissions
     * jobRole: AWS permissions relative to the Job itself, such as access to S3
 * EC2 orchestrator:
-  * AWS Batch allocates the required (declared in job definition/submition) 
+  * AWS Batch allocates the required (declared in job definition/submition) ****

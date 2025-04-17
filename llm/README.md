@@ -1,107 +1,110 @@
-# Document structured extraction
+# VLM for Document structured extraction
 
-## Literature review
+In this project, we build a Batch inference job to extract data from reports and invoices using Vision Language Models (VLM) with vLLM.
 
-### Open-source LLMs
+The Batch inference is deployed and orchestrated in [AWS Batch](https://aws.amazon.com/fr/batch/).
 
-* Qwen-2.5-VL:
-  * Tuned to return JSON
-  * Multi-modal (image, video, and **documents**)
-  * Supported by vLLM:
+This project is part of the Webinar we presented with [Julien Hurault](https://www.linkedin.com/in/julienhuraultanalytics/).
 
-An example:
+Webinar link: coming soon \
+Article link: coming soon
 
-```python
-def run_qwen2_5_vl(questions: list[str], modality: str) -> ModelRequestData:
+Subscribe to the [Newsletter](https://medium.com/@jeremyarancio/subscribe).
 
-    model_name = "Qwen/Qwen2.5-VL-3B-Instruct"
+## Quick start
 
-    engine_args = EngineArgs(
-        model=model_name,
-        max_model_len=4096,
-        max_num_seqs=5,
-        mm_processor_kwargs={
-            "min_pixels": 28 * 28,
-            "max_pixels": 1280 * 28 * 28,
-            "fps": 1,
-        },
-        disable_mm_preprocessor_cache=args.disable_mm_preprocessor_cache,
-    )
+The repository is organized as such:
 
-    if modality == "image":
-        placeholder = "<|image_pad|>"
-    elif modality == "video":
-        placeholder = "<|video_pad|>"
-
-    prompts = [
-        ("<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n"
-         f"<|im_start|>user\n<|vision_start|>{placeholder}<|vision_end|>"
-         f"{question}<|im_end|>\n"
-         "<|im_start|>assistant\n") for question in questions
-    ]
-
-    return ModelRequestData(
-        engine_args=engine_args,
-        prompts=prompts,
-    )
+```
+.
+├── src
+│   └── llm
+│       ├── __init__.py
+│       ├── __main__.py
+│       ├── parser           // Job module
+│       └── settings.py      // Settings and Env variables
+├── data
+│   └── docs                 // Downloaded documents for testing 
+├── infra                    // AWS Batch insfrastructure deployment
+├── Dockerfile  
+├── Makefile
+├── NOTES.md                 // Technical notes
+├── README.md
+├── assets
+├── notebooks                // Experimentations
+├── scripts                  // Various scripts not used in package
+├── pyproject.toml
+└── uv.lock
 ```
 
-  * Here's how look the Qwen-2.5-VL prompt:
-  ```
-  <|im_start|>system
-  You are a helpful assistant.<|im_end|>
-  <|im_start|>user
-  <|vision_start|><|image_pad|><|vision_end|>{message}.<|im_end|>
-  <|im_start|>assistant
-  ```
+The module is packaged with [uv](https://github.com/astral-sh/uv).
+To install all the dependencies, run:
 
-  * Sources:
-    * [HF collections](https://huggingface.co/collections/Qwen/qwen25-vl-6795ffac22b334a837c0f9a5)
-    * [Paper](https://arxiv.org/pdf/2502.13923)
-    * [Demo](https://huggingface.co/spaces/Qwen/Qwen2.5-VL-72B-Instruct)
-    * [README](https://github.com/QwenLM/Qwen2.5-VL/blob/main/README.md)
-  
-* SmolVLM & SmolVLM2:
-  * Small and memory efficient
-  * Not supported by vLLM
-  * **Maybe not designed for JSON output**
-  
-  <img src="assets/smolvlm.png" width=400 />
+```bash
+uv sync
+```
 
-  * Sources:
-    * https://huggingface.co/blog/smolvlm
-    * https://huggingface.co/blog/smolvlm2
+To run the batch job:
 
-* Idefics3
-  * Source:
-    * [Model page](https://huggingface.co/HuggingFaceM4/Idefics3-8B-Llama3)
+1. Use the `.env.template` to create your own `.env` file.
+2. You need to run the job within an environement with GPU such as L4, depending on the size of the model
 
-* Pixtral
-  * [Model page](https://huggingface.co/mistralai/Pixtral-12B-2409)
-  * [Blog post](https://mistral.ai/news/pixtral-12b)
-  * Structured output possible
-  * Supported by vLLM
+Then run:
 
+```bash
+uv run run-batch-job
+```
 
-## Structured ouptut generation
+## Run online Batch inference
 
-* Structure generation tutorial: [Open-source AI cookbook](https://huggingface.co/learn/cookbook/en/structured_generation_vision_language_models) 
-* Library to guide to output genertion: [Outline](https://huggingface.co/learn/cookbook/en/structured_generation_vision_language_models)
+Deploy the module using Docker to AWS ECR with: 
 
-## Data
+```bash
+make deploy ECR_ACCOUNT_ID=<YOUR-ECR-ACCOUNT-ID> 
+```
 
-### Invoices:
+NOTE: You may want to change the ECR repository (ECR_REPO_NAME) or the AWS region (AWS_REGION)
 
-* https://huggingface.co/datasets/chainyo/rvl-cdip-invoice 
-* https://huggingface.co/datasets/mathieu1256/FATURA2-invoices **[Let's take this one]**
-* https://universe.roboflow.com/amyf467-gmail-com/invoice-processing
+Then, deploy the Batch infrastructure on AWS using Terraform, run:
 
+```bash
+make aws-batch-apply
+```
 
-## Experimentations:
+NOTE: Be sure to have Terraform installed.
 
-* Install flash-attention: `pip install flash-attn --no-build-isolation`
-  * Seems there's a bug with flash-attn and vllm-vision: flash-attn is actually not used.  
-* GuidedSampling:
-  * Guide the text generation to JSON
-  * But takes more time
-  * Qwen-2.5-vl already fine-tuned for structured output.
+Once the infrastructure is set up, you can launch a job using the `aws batch` cli command.
+
+```bash
+aws batch submit-job \
+  --job-name <YOUR-JOB-NAME> \
+  --job-queue demo-job-queue \
+  --job-definition demo-job-definition
+```
+
+## Process overview
+
+The Batch process looks like the following:
+
+* The documents are loaded from S3 as images. You need to indicates 3 environment variables:
+  * `S3_BUCKET`: the S3 bucket name
+  * `S3_PREPROCESSED_IMAGES_DIR_PREFIX`: the directory name where the invoices are stored. It should be images and not PDFs.
+  * `S3_PROCESSED_DATASET_PREFIX`: The path of the output dataset. Right now, the task only returns JSONL dataset (`.jsonl`).
+* The model `MODEL_NAME` is loaded using **vLLM**. By default, we load *"Qwen/Qwen2.5-VL-3B-Instruct"*. But feel free to get any larger models if they fit into memory.
+* vLLM is configured to return a structured output using `"GuidedDecoding"` by providing the expected schema with Pydantic. 
+* Images are processed by vLLM and a `json` is extracted for each invoice. If the json decoding is not successful, an empty dict is returned instead.
+* NOT IMPLEMENTED YET: Pydantic is used to validate the extracted jsons and default values are returned if field validation fails.
+* The list of dicts, with an unique identifier (such as the S3 file path), is transformed into a usable dataset (here JSONL since there's no data type validation with Pydantic yet.)
+* The dataset is finally exported to S3. Indicate where with the environment variable `S3_PROCESSED_DATASET_PREFIX`. Be sure to indicate the proper file format (`.jsonl` in this case.)
+
+## Dataset
+
+For this demo, we used synthetically generated invoices from this [dataset](https://huggingface.co/datasets/mathieu1256/FATURA2-invoices) on Hugging Face.
+
+To download the full dataset: 
+
+```bash
+make download-data
+```
+
+There's also a script in `scripts/` folder to load a sample of images.
