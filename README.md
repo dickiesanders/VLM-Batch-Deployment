@@ -7,7 +7,7 @@ The Batch inference is deployed and orchestrated in [AWS Batch](https://aws.amaz
 This project is part of the Webinar we presented with [Julien Hurault](https://www.linkedin.com/in/julienhuraultanalytics/).
 
 Webinar link: coming soon \
-Article link: coming soon
+Article link: https://medium.com/towards-artificial-intelligence/deploy-an-in-house-vision-language-model-to-parse-millions-of-documents-say-goodbye-to-gemini-and-cdac6f77aff5
 
 Subscribe to the [Newsletter](https://medium.com/@jeremyarancio/subscribe).
 
