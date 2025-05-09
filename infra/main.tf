@@ -152,7 +152,7 @@ resource "aws_security_group" "batch_sg" {
 resource "aws_batch_compute_environment" "batch_compute_env" {
   compute_environment_name = "demo-compute-environment"
   type                     = "MANAGED"
-  service_role             = aws_iam_role.batch_service_role.arn # Role associated with Batch
+  service_role             = aws_iam_role.batch_service_role.arn
 
   compute_resources {
     type                = "EC2"
@@ -166,10 +166,82 @@ resource "aws_batch_compute_environment" "batch_compute_env" {
 
     security_group_ids = [aws_security_group.batch_sg.id]
     subnets            = data.aws_subnets.default.ids
-    instance_role      = aws_iam_instance_profile.ecs_instance_role.arn # Role to roll up EC2 instances
+    instance_role      = aws_iam_instance_profile.ecs_instance_role.arn
+
+    launch_template {
+      launch_template_id = aws_launch_template.batch_launch_template.id
+      version            = aws_launch_template.batch_launch_template.latest_version
+    }
   }
 
-  depends_on = [aws_iam_role_policy_attachment.batch_service_role] # To prevent a race condition during environment deletion 
+  depends_on = [aws_iam_role_policy_attachment.batch_service_role]
+}
+
+resource "aws_launch_template" "batch_launch_template" {
+  name = "batch-launch-template"
+  
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    
+    ebs {
+      volume_size = 100  # Increase this value as needed (in GB)
+      volume_type = "gp3"
+      delete_on_termination = true
+    }
+  }
+  
+  # Add a second volume for model storage
+  block_device_mappings {
+    device_name = "/dev/sdf"
+    
+    ebs {
+      volume_size = 100  # Adjust size as needed for your models
+      volume_type = "gp3"
+      delete_on_termination = true
+    }
+  }
+
+  user_data = base64encode(<<-EOF
+Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+MIME-Version: 1.0
+
+--==MYBOUNDARY==
+Content-Type: text/x-shellscript; charset="us-ascii"
+
+#!/bin/bash
+# Wait for the EBS volume to be attached
+while [ ! -e /dev/nvme1n1 ]; do
+  echo "Waiting for EBS volume to be attached..." >> /var/log/user-data.log
+  sleep 5
+done
+
+# Check if the volume is already formatted
+if ! blkid /dev/nvme1n1; then
+  # Format the volume
+  echo "Formatting volume..." >> /var/log/user-data.log
+  mkfs -t xfs /dev/nvme1n1
+fi
+
+# Create mount point
+mkdir -p /mnt/data
+
+# Add to fstab for persistence
+echo "/dev/nvme1n1 /mnt/data xfs defaults 0 2" >> /etc/fstab
+
+# Mount the volume
+mount /mnt/data
+echo "Volume mounted at /mnt/data" >> /var/log/user-data.log
+
+# Create directories for cache
+mkdir -p /mnt/data/huggingface_cache
+mkdir -p /mnt/data/huggingface_home
+
+# Set permissions
+chmod 777 -R /mnt/data
+echo "Directories created and permissions set" >> /var/log/user-data.log
+--==MYBOUNDARY==--
+EOF
+  )
 }
 
 ###### Job Queue ######
@@ -184,8 +256,48 @@ resource "aws_batch_job_queue" "batch_job_queue" {
   }
 }
 
-###### Job Definition (with GPU support) ######
+###### Job Definition (with GPU support and EFS volume) ######
 
+# Create an EFS file system for persistent storage
+resource "aws_efs_file_system" "model_storage" {
+  creation_token = "model-storage"
+  
+  tags = {
+    Name = "ModelStorage"
+  }
+}
+
+# Create mount targets in each subnet
+resource "aws_efs_mount_target" "model_storage_mount" {
+  for_each = toset(data.aws_subnets.default.ids)
+  
+  file_system_id = aws_efs_file_system.model_storage.id
+  subnet_id      = each.value
+  security_groups = [aws_security_group.efs_sg.id]
+}
+
+# Security group for EFS
+resource "aws_security_group" "efs_sg" {
+  name        = "efs_sg"
+  description = "Allow NFS traffic from Batch instances"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    from_port       = 2049
+    to_port         = 2049
+    protocol        = "tcp"
+    security_groups = [aws_security_group.batch_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Update the batch job definition to include the EFS volume
 resource "aws_batch_job_definition" "batch_job_definition" {
   name = "demo-job-definition"
   type = "container"
@@ -220,7 +332,33 @@ resource "aws_batch_job_definition" "batch_job_definition" {
       {
         name  = "S3_PROCESSED_DATASET_PREFIX",
         value = var.s3_processed_dataset_prefix
+      },
+      {
+        name  = "TRANSFORMERS_CACHE",
+        value = "/mnt/efs/huggingface_cache"
+      },
+      {
+        name  = "HF_HOME",
+        value = "/mnt/efs/huggingface_home"
+      }
+    ],
+    volumes = [
+      {
+        name = "model-storage",
+        efsVolumeConfiguration = {
+          fileSystemId = aws_efs_file_system.model_storage.id,
+          rootDirectory = "/"
+        }
+      }
+    ],
+    mountPoints = [
+      {
+        containerPath = "/mnt/efs",
+        sourceVolume = "model-storage",
+        readOnly = false
       }
     ]
   })
+
+  depends_on = [aws_efs_mount_target.model_storage_mount]
 }

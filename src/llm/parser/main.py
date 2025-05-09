@@ -4,6 +4,7 @@ from io import BytesIO
 import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import os
 
 from PIL import Image
 import boto3
@@ -68,16 +69,47 @@ def load_images(
     try:
         s3 = boto3.client("s3")
         response = s3.list_objects_v2(Bucket=s3_bucket, Prefix=s3_images_folder_uri)
+        
+        if "Contents" not in response:
+            LOGGER.error("No objects found in S3 bucket %s with prefix %s", s3_bucket, s3_images_folder_uri)
+            return [], []
 
         images: list[Image.Image] = []
         filenames: list[str] = []
 
         for obj in response["Contents"]:
             key = obj["Key"]
-            filenames.append(key)
-            response = s3.get_object(Bucket=s3_bucket, Key=key)
-            image_data = response["Body"].read()
-            images.append(Image.open(BytesIO(image_data)))
+            # Skip directories or non-image files
+            if key.endswith('/') or not any(key.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff']):
+                LOGGER.info("Skipping non-image file: %s", key)
+                continue
+                
+            LOGGER.info("Attempting to load image: %s", key)
+            try:
+                response = s3.get_object(Bucket=s3_bucket, Key=key)
+                image_data = response["Body"].read()
+                
+                # Try to open the image and verify it's valid
+                try:
+                    img = Image.open(BytesIO(image_data))
+                    # Force load image data to verify it's valid
+                    img.load()
+                    images.append(img)
+                    filenames.append(key)
+                    LOGGER.info("Successfully loaded image: %s, size: %s, format: %s", 
+                               key, img.size, img.format)
+                except Exception as img_err:
+                    LOGGER.error("Failed to process image %s: %s", key, str(img_err))
+                    # Optionally save the problematic file for debugging
+                    # with open(f"/tmp/debug_{Path(key).name}", "wb") as f:
+                    #     f.write(image_data)
+            except ClientError as s3_err:
+                LOGGER.error("S3 error when loading %s: %s", key, str(s3_err))
+        
+        # Store the count of contents for the log message
+        contents_count = len(response.get("Contents", []))
+        LOGGER.info("Successfully loaded %d images out of %d files", 
+                   len(images), contents_count)
         return filenames, images
     except ClientError as e:
         LOGGER.error("Issue when loading images from s3: %s.", str(e))
@@ -90,6 +122,26 @@ def load_images(
 def load_model(
     model_name: str, schema: Type[BaseModel] | None
 ) -> tuple[LLM, SamplingParams]:
+    # Use the mounted volume for model cache
+    cache_dir = os.environ.get("TRANSFORMERS_CACHE", "/mnt/data/huggingface_cache")
+    os.environ["TRANSFORMERS_CACHE"] = cache_dir
+    os.environ["HF_HOME"] = os.environ.get("HF_HOME", "/mnt/data/huggingface_home")
+    
+    # Create cache directories if they don't exist
+    Path(cache_dir).mkdir(parents=True, exist_ok=True)
+    Path(os.environ["HF_HOME"]).mkdir(parents=True, exist_ok=True)
+    
+    LOGGER.info(f"Using model cache directory: {cache_dir}")
+    LOGGER.info(f"Using HF home directory: {os.environ['HF_HOME']}")
+    
+    # Check available space in the mounted volume
+    try:
+        import subprocess
+        df_output = subprocess.check_output(f"df -h {cache_dir}", shell=True).decode('utf-8')
+        LOGGER.info(f"Available space in cache directory:\n{df_output}")
+    except Exception as e:
+        LOGGER.warning(f"Failed to check disk space: {e}")
+    
     llm = LLM(
         model=model_name,
         gpu_memory_utilization=settings.gpu_memory_utilisation,
