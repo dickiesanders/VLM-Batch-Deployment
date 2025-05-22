@@ -301,6 +301,18 @@ resource "aws_security_group" "efs_sg" {
 resource "aws_batch_job_definition" "batch_job_definition" {
   name = "demo-job-definition"
   type = "container"
+  
+  parameters = {
+    "MODEL_NAME" = var.model_name
+    "GPU_MEMORY_UTILISATION" = var.gpu_memory_utilisation
+    "MAX_NUM_SEQS" = var.max_num_seqs
+    "MAX_MODEL_LEN" = var.max_model_len
+    "MAX_TOKENS" = var.max_tokens
+    "TEMPERATURE" = var.temperature
+    "S3_BUCKET" = var.s3_bucket
+    "S3_PREPROCESSED_IMAGES_DIR_PREFIX" = var.preprocessed_images_dir_prefix
+    "S3_PROCESSED_DATASET_PREFIX" = var.s3_processed_dataset_prefix
+  }
 
   container_properties = jsonencode({
     image            = var.docker_image,
@@ -322,16 +334,40 @@ resource "aws_batch_job_definition" "batch_job_definition" {
     ],
     environment = [
       {
+        name  = "MODEL_NAME",
+        value = "${var.model_name}"
+      },
+      {
+        name  = "GPU_MEMORY_UTILISATION",
+        value = "${var.gpu_memory_utilisation}"
+      },
+      {
+        name  = "MAX_NUM_SEQS",
+        value = "${var.max_num_seqs}"
+      },
+      {
+        name  = "MAX_MODEL_LEN",
+        value = "${var.max_model_len}"
+      },
+      {
+        name  = "MAX_TOKENS",
+        value = "${var.max_tokens}"
+      },
+      {
+        name  = "TEMPERATURE",
+        value = "${var.temperature}"
+      },
+      {
         name  = "S3_BUCKET",
-        value = var.s3_bucket
+        value = "${var.s3_bucket}"
       },
       {
         name  = "S3_PREPROCESSED_IMAGES_DIR_PREFIX",
-        value = var.preprocessed_images_dir_prefix
+        value = "${var.preprocessed_images_dir_prefix}"
       },
       {
         name  = "S3_PROCESSED_DATASET_PREFIX",
-        value = var.s3_processed_dataset_prefix
+        value = "${var.s3_processed_dataset_prefix}"
       },
       {
         name  = "TRANSFORMERS_CACHE",
@@ -340,6 +376,10 @@ resource "aws_batch_job_definition" "batch_job_definition" {
       {
         name  = "HF_HOME",
         value = "/mnt/efs/huggingface_home"
+      },
+      {
+        name  = "HF_TOKEN",
+        value = "${var.hf_token}"
       }
     ],
     volumes = [

@@ -127,6 +127,14 @@ def load_model(
     os.environ["TRANSFORMERS_CACHE"] = cache_dir
     os.environ["HF_HOME"] = os.environ.get("HF_HOME", "/mnt/data/huggingface_home")
     
+    # Set Hugging Face token for gated models
+    hf_token = os.environ.get("HF_TOKEN") or settings.hf_token
+    if hf_token:
+        os.environ["HF_TOKEN"] = hf_token
+        LOGGER.info("Using Hugging Face token for authentication")
+    else:
+        LOGGER.warning("No Hugging Face token provided. Gated models may not be accessible.")
+    
     # Create cache directories if they don't exist
     Path(cache_dir).mkdir(parents=True, exist_ok=True)
     Path(os.environ["HF_HOME"]).mkdir(parents=True, exist_ok=True)
@@ -149,6 +157,9 @@ def load_model(
         max_model_len=settings.max_model_len,
         mm_processor_kwargs={"min_pixels": 28 * 28, "max_pixels": 1280 * 28 * 28},
         disable_mm_preprocessor_cache=True,
+        trust_remote_code=True,
+        download_dir=cache_dir,
+        token=hf_token,  # Pass the token to vLLM
     )
     sampling_params = SamplingParams(
         guided_decoding=GuidedDecodingParams(json=schema.model_json_schema())
@@ -172,19 +183,28 @@ def run_inference(
         for image in images
     ]
     outputs = model.generate(inputs, sampling_params=sampling_params)
+    
+    # Log the raw outputs
+    for i, output in enumerate(outputs):
+        LOGGER.info(f"Model output {i} generation stats: tokens={len(output.outputs[0].token_ids)}")
+    
     return [output.outputs[0].text for output in outputs]
 
 
 def extract_structured_outputs(outputs: list[str]) -> list[dict[str, Any]]:
     json_outputs: list[dict[str, Any]] = []
-    for output in outputs:
+    for i, output in enumerate(outputs):
+        LOGGER.info(f"Raw model output {i}: {output[:500]}...")  # Log the first 500 chars of output
         start = output.find("{")
         end = output.rfind("}") + 1  # +1 to include the closing brace
         json_str = output[start:end]
         try:
-            json_outputs.append(json.loads(json_str))
+            parsed_json = json.loads(json_str)
+            LOGGER.info(f"Successfully parsed JSON for output {i}")
+            json_outputs.append(parsed_json)
         except json.JSONDecodeError as e:
-            LOGGER.error("Issue with decoding json for LLM output: %s", e)
+            LOGGER.error(f"Issue with decoding json for LLM output {i}: {e}")
+            LOGGER.error(f"JSON string attempted to parse: {json_str[:500]}...")
             json_outputs.append({})
     return json_outputs
 
@@ -223,10 +243,21 @@ def export_to_parquet(
 def export_to_jsonl(
     structured_outputs: list[dict[str, Any]], output_path: Path
 ) -> None:
+    LOGGER.info(f"Exporting {len(structured_outputs)} structured outputs to {output_path}")
+    
     with open(output_path, "w") as f:
-        for item in structured_outputs:
+        for i, item in enumerate(structured_outputs):
+            # Add detailed logging to see what's being written
+            LOGGER.info(f"Writing output {i} for image ID: {item.get('id', 'unknown')}")
+            LOGGER.info(f"Output content preview: {str(item)[:500]}...")
             json.dump(item, f)
             f.write("\n")
+    
+    # Log the contents of the file for debugging
+    LOGGER.info(f"Contents of output file {output_path}:")
+    with open(output_path, "r") as f:
+        for i, line in enumerate(f):
+            LOGGER.info(f"Line {i+1}: {line.strip()[:500]}...")
 
 
 def export_to_s3(

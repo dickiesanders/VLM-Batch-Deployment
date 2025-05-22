@@ -1,5 +1,2 @@
-.env
-__pycache__
-.terraform*
-terraform.tfstate*
-.DS_Store
+# Created by venv; see https://docs.python.org/3/library/venv.html
+*
