@@ -54,7 +54,6 @@ class Invoice(BaseModel):
     due_date: str | None = None
     invoice_number: str | None = None
     po_number: str | None = None
-    vehicle_info: str | None = None
     from_info: Info
     to_info: Info
     line_items: List[LineItem] | None = None

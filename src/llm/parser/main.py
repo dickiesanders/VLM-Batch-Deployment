@@ -159,7 +159,6 @@ def load_model(
         disable_mm_preprocessor_cache=True,
         trust_remote_code=True,
         download_dir=cache_dir,
-        token=hf_token,  # Pass the token to vLLM
     )
     sampling_params = SamplingParams(
         guided_decoding=GuidedDecodingParams(json=schema.model_json_schema())

@@ -25,6 +25,7 @@ Return the data in the following JSON format:
   "invoice_number": "...",
   "invoiced_date": "...",
   "due_date": "...",
+  "po_number": "...",
   "from_info": {
     "name": "...",
     "email": "...",
