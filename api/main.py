@@ -8,10 +8,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.routes import ocr_router, health_router, schemas_router
 from api.routes.ab_testing import router as ab_testing_router
 from api.routes.models import router as models_router
+from api.routes.billing import router as billing_router
+from api.routes.teams import router as teams_router
+from api.routes.api_keys import router as api_keys_router
+from api.routes.audit import router as audit_router
 from api.services.ocr_engine import initialize_engine
 from api.services.job_tracker import initialize_job_tracker
 from api.services.rate_limiter import initialize_rate_limiter
 from api.services.database import initialize_database, get_database
+from api.services.billing import initialize_billing
 
 # Configure logging
 logging.basicConfig(
@@ -46,6 +51,12 @@ async def lifespan(app: FastAPI):
         db = initialize_database(database_url)
         await db.init_db()
         logger.info("Initialized PostgreSQL database")
+
+    # Initialize billing (Stripe)
+    stripe_key = os.getenv("STRIPE_API_KEY")
+    if stripe_key:
+        initialize_billing(stripe_key)
+        logger.info("Initialized Stripe billing")
 
     # Initialize OCR engine
     model_name = os.getenv("MODEL_NAME", "deepseek-ai/deepseek-vl2-tiny")
@@ -90,6 +101,10 @@ app = FastAPI(
     - Model A/B testing
     - Multi-tenant schema management
     - Bring Your Own Model (BYOM) support
+    - Team management
+    - API key rotation and scopes
+    - Stripe billing integration
+    - Audit logging
     """,
     version="1.0.0",
     lifespan=lifespan,
@@ -110,6 +125,10 @@ app.include_router(ocr_router)
 app.include_router(schemas_router)
 app.include_router(ab_testing_router)
 app.include_router(models_router)
+app.include_router(billing_router)
+app.include_router(teams_router)
+app.include_router(api_keys_router)
+app.include_router(audit_router)
 
 
 @app.get("/")
