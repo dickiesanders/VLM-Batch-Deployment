@@ -1,0 +1,37 @@
+{
+  "name": "@deepseek/ocr-sdk",
+  "version": "1.0.0",
+  "description": "Node.js SDK for DeepSeek OCR API",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "lint": "eslint src/**/*.ts"
+  },
+  "keywords": [
+    "ocr",
+    "deepseek",
+    "document",
+    "extraction",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "form-data": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dickiesanders/VLM-Batch-Deployment"
+  }
+}
