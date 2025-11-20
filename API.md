@@ -5,9 +5,12 @@ Real-time document OCR and structured extraction API powered by DeepSeek-VL2 and
 ## Features
 
 - **Real-time extraction**: Synchronous API for immediate results
-- **Async processing**: Background jobs for large documents
+- **Async processing**: Background jobs with webhook notifications
+- **Batch processing**: Process entire S3/GCS buckets
 - **Structured output**: Custom JSON schemas for data extraction
 - **Multi-tenant**: Schema management with API key authentication
+- **Rate limiting**: Per-tenant RPM/RPD quotas
+- **A/B testing**: Compare model variants with metrics
 - **Cloud-native**: Deploy on Google Cloud Run (GPU) or AWS EC2
 
 ## Quick Start
@@ -27,15 +30,19 @@ MODEL_NAME=deepseek-ai/deepseek-vl2-tiny uv run python -m api.main
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Health check |
+| `/ready` | GET | Readiness probe |
 | `/ocr/extract` | POST | Synchronous OCR extraction |
-| `/ocr/extract/async` | POST | Async OCR extraction |
-| `/ocr/job/{job_id}` | GET | Get async job status |
+| `/ocr/extract/async` | POST | Async OCR with webhook support |
+| `/ocr/batch` | POST | Batch process from S3/GCS |
+| `/ocr/job/{job_id}` | GET | Get job status/results |
 | `/schemas` | GET/POST | List/create schemas |
 | `/schemas/{id}` | GET/PUT/DELETE | Manage schemas |
+| `/ab-tests` | GET/POST | List/create A/B tests |
+| `/ab-tests/{id}/results` | GET | Get test results |
 
-### Example Usage
+## Usage Examples
 
-#### Basic OCR Extraction
+### Basic OCR Extraction
 
 ```bash
 curl -X POST http://localhost:8080/ocr/extract \
@@ -46,10 +53,10 @@ curl -X POST http://localhost:8080/ocr/extract \
   }'
 ```
 
-#### Structured Extraction with Inline Schema
+### Async Extraction with Webhook
 
 ```bash
-curl -X POST http://localhost:8080/ocr/extract \
+curl -X POST "http://localhost:8080/ocr/extract/async?webhook_url=https://my-app.com/webhook" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: tenant-123:secret" \
   -d '{
@@ -58,14 +65,35 @@ curl -X POST http://localhost:8080/ocr/extract \
       "type": "object",
       "properties": {
         "invoice_number": {"type": "string"},
-        "total": {"type": "number"},
-        "date": {"type": "string"}
+        "total": {"type": "number"}
       }
     }
   }'
 ```
 
-#### Create and Use Saved Schema
+### Batch Processing
+
+```bash
+curl -X POST "http://localhost:8080/ocr/batch?webhook_url=https://my-app.com/webhook" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tenant-123:secret" \
+  -d '{
+    "source_bucket": "my-documents",
+    "source_prefix": "invoices/2024/",
+    "output_bucket": "my-results",
+    "output_prefix": "ocr-output/",
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "invoice_number": {"type": "string"},
+        "vendor": {"type": "string"},
+        "total": {"type": "number"}
+      }
+    }
+  }'
+```
+
+### Schema Management
 
 ```bash
 # Create schema
@@ -74,6 +102,7 @@ curl -X POST http://localhost:8080/schemas \
   -H "X-API-Key: tenant-123:secret" \
   -d '{
     "name": "Invoice Schema",
+    "description": "Standard invoice extraction",
     "json_schema": {
       "type": "object",
       "properties": {
@@ -86,12 +115,14 @@ curl -X POST http://localhost:8080/schemas \
             "type": "object",
             "properties": {
               "description": {"type": "string"},
-              "amount": {"type": "number"}
+              "quantity": {"type": "number"},
+              "unit_price": {"type": "number"}
             }
           }
         }
       }
-    }
+    },
+    "prompt_template": "Extract invoice data. Pay attention to line items and totals."
   }'
 
 # Use saved schema
@@ -100,8 +131,53 @@ curl -X POST http://localhost:8080/ocr/extract \
   -H "X-API-Key: tenant-123:secret" \
   -d '{
     "image_url": "https://example.com/invoice.png",
-    "schema_id": "<schema-id-from-above>"
+    "schema_id": "<schema-id>"
   }'
+```
+
+### A/B Testing
+
+```bash
+# Create test
+curl -X POST http://localhost:8080/ab-tests \
+  -H "Content-Type: application/json" \
+  -d '{
+    "test_id": "model-comparison-v1",
+    "description": "Compare tiny vs small model",
+    "variants": [
+      {"name": "tiny", "model_name": "deepseek-ai/deepseek-vl2-tiny", "weight": 1},
+      {"name": "small", "model_name": "deepseek-ai/deepseek-vl2-small", "weight": 1}
+    ]
+  }'
+
+# Get results
+curl http://localhost:8080/ab-tests/model-comparison-v1/results
+```
+
+## Webhook Events
+
+The API sends webhook notifications for async/batch jobs:
+
+### Job Completed
+```json
+{
+  "event": "job.completed",
+  "job_id": "uuid",
+  "status": "completed",
+  "result_url": "s3://bucket/results/uuid.json",
+  "error": null
+}
+```
+
+### Batch Progress
+```json
+{
+  "event": "batch.progress",
+  "job_id": "uuid",
+  "processed": 50,
+  "total": 100,
+  "percent": 50.0
+}
 ```
 
 ## Deployment
@@ -119,11 +195,9 @@ cp terraform.tfvars.example terraform.tfvars
 2. Build and push container:
 
 ```bash
-# Set variables
 PROJECT_ID=your-project
 REGION=us-central1
 
-# Build and push
 docker build -f Dockerfile.api -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/deepseek-ocr-api/api:latest .
 docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/deepseek-ocr-api/api:latest
 ```
@@ -137,30 +211,35 @@ terraform apply
 
 ### AWS EC2 with GPU
 
-1. Launch EC2 instance with NVIDIA GPU (e.g., g4dn.xlarge, g5.xlarge)
-
-2. Install NVIDIA drivers and Docker
-
-3. Run the container:
-
 ```bash
 docker run -d \
   --gpus all \
   -p 8080:8080 \
   -e MODEL_NAME=deepseek-ai/deepseek-vl2-tiny \
-  -e AWS_ACCESS_KEY_ID=xxx \
-  -e AWS_SECRET_ACCESS_KEY=xxx \
+  -e REDIS_URL=redis://your-redis:6379 \
+  -e DATABASE_URL=postgresql://user:pass@host/db \
   your-ecr-repo/deepseek-ocr-api:latest
 ```
 
 ## Configuration
 
-| Environment Variable | Default | Description |
-|---------------------|---------|-------------|
+### Core Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `MODEL_NAME` | `deepseek-ai/deepseek-vl2-tiny` | VLM model to use |
 | `GPU_MEMORY_UTILIZATION` | `0.85` | GPU memory fraction |
 | `MAX_MODEL_LEN` | `4096` | Max context length |
 | `PORT` | `8080` | API server port |
+
+### SaaS Features
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDIS_URL` | - | Redis for distributed job tracking |
+| `DATABASE_URL` | - | PostgreSQL for schema persistence |
+| `RATE_LIMIT_RPM` | `60` | Requests per minute per tenant |
+| `RATE_LIMIT_RPD` | `1000` | Requests per day per tenant |
 | `CORS_ORIGINS` | `*` | Allowed CORS origins |
 
 ## Model Options
@@ -177,18 +256,42 @@ docker run -d \
 │             │     │   Server    │     │  DeepSeek   │
 └─────────────┘     └─────────────┘     └─────────────┘
                            │
-                           ▼
-                    ┌─────────────┐
-                    │   Storage   │
-                    │  (S3/GCS)   │
-                    └─────────────┘
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+       ┌──────────┐ ┌──────────┐ ┌──────────┐
+       │  Redis   │ │ Postgres │ │ Storage  │
+       │  (Jobs)  │ │(Schemas) │ │ (S3/GCS) │
+       └──────────┘ └──────────┘ └──────────┘
 ```
 
-## Future Enhancements
+## Rate Limiting
 
-- [ ] Batch processing from S3/GCS buckets
-- [ ] Webhook callbacks for async jobs
-- [ ] Redis for distributed job tracking
-- [ ] PostgreSQL for schema persistence
-- [ ] Rate limiting and usage quotas
-- [ ] Model A/B testing
+Responses include rate limit headers:
+
+```
+X-RateLimit-Remaining: 59
+Retry-After: 60
+```
+
+When limits are exceeded, returns `429 Too Many Requests`.
+
+## Roadmap
+
+### Completed
+- [x] Batch processing from S3/GCS buckets
+- [x] Webhook callbacks for async jobs
+- [x] Redis for distributed job tracking
+- [x] PostgreSQL for schema persistence
+- [x] Rate limiting and usage quotas
+- [x] Model A/B testing
+
+### Planned
+- [ ] User dashboard and management UI
+- [ ] Bring Your Own Model (BYOM) support
+- [ ] Usage analytics and billing integration
+- [ ] Team/organization management
+- [ ] API key rotation and scopes
+- [ ] Custom model fine-tuning
+- [ ] Document preprocessing (PDF to image)
+- [ ] Result validation and confidence scores
+- [ ] Audit logging and compliance
