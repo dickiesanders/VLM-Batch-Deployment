@@ -6,7 +6,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import ocr_router, health_router, schemas_router
+from api.routes.ab_testing import router as ab_testing_router
 from api.services.ocr_engine import initialize_engine
+from api.services.job_tracker import initialize_job_tracker
+from api.services.rate_limiter import initialize_rate_limiter
+from api.services.database import initialize_database, get_database
 
 # Configure logging
 logging.basicConfig(
@@ -18,8 +22,31 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan handler - load model on startup"""
-    # Startup
+    """Application lifespan handler - initialize services on startup"""
+    # Initialize job tracker (Redis or in-memory)
+    redis_url = os.getenv("REDIS_URL")
+    initialize_job_tracker(redis_url)
+    if redis_url:
+        logger.info("Initialized Redis job tracker")
+    else:
+        logger.info("Using in-memory job tracker")
+
+    # Initialize rate limiter
+    initialize_rate_limiter(
+        redis_url=redis_url,
+        requests_per_minute=int(os.getenv("RATE_LIMIT_RPM", "60")),
+        requests_per_day=int(os.getenv("RATE_LIMIT_RPD", "1000")),
+    )
+    logger.info("Initialized rate limiter")
+
+    # Initialize database (PostgreSQL)
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        db = initialize_database(database_url)
+        await db.init_db()
+        logger.info("Initialized PostgreSQL database")
+
+    # Initialize OCR engine
     model_name = os.getenv("MODEL_NAME", "deepseek-ai/deepseek-vl2-tiny")
     gpu_memory_utilization = float(os.getenv("GPU_MEMORY_UTILIZATION", "0.85"))
     max_model_len = int(os.getenv("MAX_MODEL_LEN", "4096"))
@@ -42,6 +69,9 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down OCR API")
+    db = get_database()
+    if db:
+        await db.close()
 
 
 app = FastAPI(
@@ -53,8 +83,11 @@ app = FastAPI(
     - Real-time document OCR extraction
     - Structured output with custom schemas
     - Async processing for large documents
-    - Batch processing support
-    - S3/GCS storage integration
+    - Batch processing from S3/GCS
+    - Webhook callbacks
+    - Rate limiting and usage quotas
+    - Model A/B testing
+    - Multi-tenant schema management
     """,
     version="1.0.0",
     lifespan=lifespan,
@@ -73,6 +106,7 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(ocr_router)
 app.include_router(schemas_router)
+app.include_router(ab_testing_router)
 
 
 @app.get("/")
