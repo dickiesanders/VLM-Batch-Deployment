@@ -37,6 +37,9 @@ MODEL_NAME=deepseek-ai/deepseek-vl2-tiny uv run python -m api.main
 | `/ocr/job/{job_id}` | GET | Get job status/results |
 | `/schemas` | GET/POST | List/create schemas |
 | `/schemas/{id}` | GET/PUT/DELETE | Manage schemas |
+| `/models` | GET/POST | List/register models (BYOM) |
+| `/models/{id}` | GET/PUT/DELETE | Manage models |
+| `/models/{id}/load` | POST | Pre-load model to memory |
 | `/ab-tests` | GET/POST | List/create A/B tests |
 | `/ab-tests/{id}/results` | GET | Get test results |
 
@@ -275,6 +278,35 @@ Retry-After: 60
 
 When limits are exceeded, returns `429 Too Many Requests`.
 
+## SDKs
+
+### Python SDK
+
+```bash
+pip install deepseek-ocr
+```
+
+```python
+from deepseek_ocr import DeepSeekOCR
+
+client = DeepSeekOCR(api_key="tenant:secret", base_url="https://your-api.com")
+result = client.extract(image="invoice.png", schema={"type": "object", ...})
+```
+
+See `sdk/python/README.md` for full documentation.
+
+## Dashboard
+
+A Next.js management dashboard is available in `dashboard/`:
+
+```bash
+cd dashboard
+npm install
+npm run dev
+```
+
+Features: Schema management, job lookup, BYOM model registration, API key config.
+
 ## Roadmap
 
 ### Completed
@@ -284,14 +316,16 @@ When limits are exceeded, returns `429 Too Many Requests`.
 - [x] PostgreSQL for schema persistence
 - [x] Rate limiting and usage quotas
 - [x] Model A/B testing
+- [x] Bring Your Own Model (BYOM) support
+- [x] Python SDK
+- [x] Management dashboard
 
 ### Planned
-- [ ] User dashboard and management UI
-- [ ] Bring Your Own Model (BYOM) support
-- [ ] Usage analytics and billing integration
+- [ ] Usage analytics and billing integration (Stripe)
 - [ ] Team/organization management
 - [ ] API key rotation and scopes
 - [ ] Custom model fine-tuning
 - [ ] Document preprocessing (PDF to image)
 - [ ] Result validation and confidence scores
 - [ ] Audit logging and compliance
+- [ ] Node.js SDK
