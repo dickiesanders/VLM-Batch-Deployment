@@ -42,6 +42,17 @@ MODEL_NAME=deepseek-ai/deepseek-vl2-tiny uv run python -m api.main
 | `/models/{id}/load` | POST | Pre-load model to memory |
 | `/ab-tests` | GET/POST | List/create A/B tests |
 | `/ab-tests/{id}/results` | GET | Get test results |
+| `/api-keys` | GET/POST | List/create API keys |
+| `/api-keys/{id}/rotate` | POST | Rotate API key |
+| `/api-keys/{id}/revoke` | POST | Revoke API key |
+| `/teams` | GET/POST | List/create teams |
+| `/teams/{id}/members` | GET | List team members |
+| `/teams/{id}/invitations` | POST | Invite member |
+| `/billing/customers` | POST | Create Stripe customer |
+| `/billing/subscriptions` | POST | Create subscription |
+| `/billing/portal` | POST | Billing portal session |
+| `/audit/logs` | GET | Query audit logs |
+| `/audit/logs/export` | GET | Export audit logs |
 
 ## Usage Examples
 
@@ -319,13 +330,13 @@ Features: Schema management, job lookup, BYOM model registration, API key config
 - [x] Bring Your Own Model (BYOM) support
 - [x] Python SDK
 - [x] Management dashboard
+- [x] Stripe billing integration
+- [x] Team/organization management
+- [x] API key rotation and scopes
+- [x] Audit logging and compliance
+- [x] Node.js SDK
 
 ### Planned
-- [ ] Usage analytics and billing integration (Stripe)
-- [ ] Team/organization management
-- [ ] API key rotation and scopes
 - [ ] Custom model fine-tuning
 - [ ] Document preprocessing (PDF to image)
 - [ ] Result validation and confidence scores
-- [ ] Audit logging and compliance
-- [ ] Node.js SDK

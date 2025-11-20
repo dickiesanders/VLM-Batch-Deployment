@@ -34,4 +34,6 @@ run-api = "api.main:app"
 [dependency-groups]
 dev = [
     "ipykernel>=6.29.5",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
 ]
