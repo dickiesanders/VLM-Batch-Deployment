@@ -1,0 +1,11 @@
+# Example configuration for Cloud Run deployment
+project_id             = "your-gcp-project-id"
+region                 = "us-central1"
+model_name             = "deepseek-ai/deepseek-vl2-tiny"
+gpu_memory_utilization = "0.85"
+max_model_len          = "4096"
+storage_bucket         = "your-ocr-results-bucket"
+image_tag              = "latest"
+min_instances          = 0
+max_instances          = 5
+allow_unauthenticated  = false
