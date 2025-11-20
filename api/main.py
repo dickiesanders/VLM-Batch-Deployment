@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import ocr_router, health_router, schemas_router
 from api.routes.ab_testing import router as ab_testing_router
+from api.routes.models import router as models_router
 from api.services.ocr_engine import initialize_engine
 from api.services.job_tracker import initialize_job_tracker
 from api.services.rate_limiter import initialize_rate_limiter
@@ -88,6 +89,7 @@ app = FastAPI(
     - Rate limiting and usage quotas
     - Model A/B testing
     - Multi-tenant schema management
+    - Bring Your Own Model (BYOM) support
     """,
     version="1.0.0",
     lifespan=lifespan,
@@ -107,6 +109,7 @@ app.include_router(health_router)
 app.include_router(ocr_router)
 app.include_router(schemas_router)
 app.include_router(ab_testing_router)
+app.include_router(models_router)
 
 
 @app.get("/")

@@ -15,6 +15,10 @@ class OCRRequest(BaseModel):
     """Request model for OCR extraction"""
     image_url: Optional[str] = Field(None, description="URL of image to process")
     image_base64: Optional[str] = Field(None, description="Base64 encoded image")
+    model_id: Optional[str] = Field(
+        None,
+        description="ID of a registered custom model (BYOM)"
+    )
     schema_id: Optional[str] = Field(
         None,
         description="ID of a saved schema to use for extraction"
