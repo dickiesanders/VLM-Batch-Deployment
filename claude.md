@@ -2,23 +2,48 @@
 
 ## Project Overview
 
-Real-time document OCR API using DeepSeek-VL2 via vLLM. Designed as a SaaS solution for structured document extraction.
+Real-time document OCR API using DeepSeek-VL2 via vLLM. Full SaaS solution with billing, teams, BYOM support, and multi-tenant isolation.
 
 ## Architecture
 
-- **api/**: FastAPI application with OCR endpoints
-- **api/services/**: OCR engine (vLLM) and storage backends
-- **api/routes/**: API endpoints (ocr, schemas, health)
-- **api/models/**: Pydantic schemas
-- **infra/cloudrun/**: Terraform for Google Cloud Run GPU deployment
-- **src/llm/**: Original batch processing module (reference)
+```
+├── api/
+│   ├── main.py              # FastAPI app entry point
+│   ├── routes/              # API endpoints
+│   │   ├── ocr.py           # OCR extraction endpoints
+│   │   ├── schemas.py       # Schema management
+│   │   ├── models.py        # BYOM model registry
+│   │   ├── ab_testing.py    # A/B test management
+│   │   ├── billing.py       # Stripe billing
+│   │   ├── teams.py         # Team management
+│   │   ├── api_keys.py      # API key management
+│   │   └── audit.py         # Audit logging
+│   ├── services/
+│   │   ├── ocr_engine.py    # vLLM OCR processing
+│   │   ├── storage.py       # S3/GCS/local backends
+│   │   ├── rate_limiter.py  # RPM/RPD rate limiting
+│   │   ├── billing.py       # Stripe integration
+│   │   ├── teams.py         # Team/org management
+│   │   ├── api_keys.py      # Key generation/rotation
+│   │   ├── audit.py         # Audit logging
+│   │   └── model_registry.py # BYOM registry
+│   └── models/              # Pydantic schemas
+├── sdk/
+│   ├── python/              # Python SDK
+│   └── nodejs/              # Node.js/TypeScript SDK
+├── dashboard/               # Next.js management UI
+├── infra/cloudrun/          # Terraform deployment
+└── tests/services/          # Pytest test suite
+```
 
 ## Key Design Decisions
 
 - **vLLM over Ollama**: Better performance, structured output via GuidedDecoding
-- **Multi-tenant**: API key auth with tenant isolation for schemas
-- **Storage agnostic**: S3, GCS, and local backends supported
+- **Multi-tenant**: API key auth with tenant isolation
+- **Storage agnostic**: S3, GCS, and local backends
 - **Cloud Run primary**: Serverless GPU for cost efficiency
+- **Stripe billing**: Usage-based metered billing
+- **RBAC teams**: Owner > Admin > Member > Viewer permissions
 
 ## Development
 
@@ -26,23 +51,82 @@ Real-time document OCR API using DeepSeek-VL2 via vLLM. Designed as a SaaS solut
 # Install deps
 uv sync
 
-# Run locally
+# Run locally (requires GPU)
 MODEL_NAME=deepseek-ai/deepseek-vl2-tiny uv run python -m api.main
 
 # Run tests
-uv run pytest
+uv sync --group dev
+uv run pytest tests/ -v
+
+# Run specific test
+uv run pytest tests/services/test_api_keys.py -v
 ```
 
 ## Common Tasks
 
-- Add new endpoint: Create in `api/routes/`, register in `api/routes/__init__.py` and `api/main.py`
-- Add storage backend: Extend `StorageBackend` in `api/services/storage.py`
-- Update models: Edit `api/models/schemas.py` or `api/models/tenant.py`
+### Add new endpoint
+1. Create route in `api/routes/new_route.py`
+2. Register router in `api/main.py`: `app.include_router(new_router)`
+
+### Add storage backend
+Extend `StorageBackend` in `api/services/storage.py`
+
+### Add new service
+1. Create service in `api/services/new_service.py`
+2. Add tests in `tests/services/test_new_service.py`
+3. Create route if needed
+
+### Update billing plans
+Modify `Plan` enum and `PLAN_PRICES` in `api/services/billing.py`
 
 ## Environment Variables
 
+### Core
 - `MODEL_NAME`: VLM model (default: deepseek-ai/deepseek-vl2-tiny)
 - `GPU_MEMORY_UTILIZATION`: GPU memory fraction (default: 0.85)
-- `REDIS_URL`: Redis connection for job tracking
+- `MAX_MODEL_LEN`: Max context length (default: 4096)
+- `PORT`: Server port (default: 8080)
+
+### Database
+- `REDIS_URL`: Redis for job tracking and rate limiting
 - `DATABASE_URL`: PostgreSQL for schema persistence
+
+### Storage
 - `STORAGE_BACKEND`: s3, gcs, or local
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`: For S3
+- `GOOGLE_APPLICATION_CREDENTIALS`: For GCS
+
+### Billing
+- `STRIPE_API_KEY`: Stripe secret key
+- `STRIPE_WEBHOOK_SECRET`: Webhook signing secret
+
+### Security
+- `CORS_ORIGINS`: Allowed origins (default: *)
+- `RATE_LIMIT_RPM`: Requests per minute (default: 60)
+- `RATE_LIMIT_RPD`: Requests per day (default: 1000)
+
+## Testing
+
+Tests use pytest with async support. Services are tested with mocks for external dependencies (Stripe, Redis).
+
+```bash
+# Run all tests
+uv run pytest tests/ -v
+
+# Run with coverage
+uv run pytest tests/ --cov=api --cov-report=html
+```
+
+## Deployment
+
+See `infra/cloudrun/` for Terraform configuration. Key steps:
+1. Build Docker image with `Dockerfile.api`
+2. Push to Artifact Registry
+3. Run `terraform apply`
+
+## API Key Format
+
+API keys follow the format: `tenant_id:secret`
+- Parsed from `X-API-Key` header
+- Secrets are hashed with SHA-256 for storage
+- Keys have scopes: read, write, delete, admin, billing
