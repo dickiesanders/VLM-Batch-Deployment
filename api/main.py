@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 from api.routes import ocr_router, health_router, schemas_router
 from api.routes.ab_testing import router as ab_testing_router
@@ -24,6 +25,46 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# OpenAPI tags for documentation
+tags_metadata = [
+    {
+        "name": "Health",
+        "description": "Health checks and readiness probes",
+    },
+    {
+        "name": "OCR",
+        "description": "Document OCR extraction - sync, async, and batch processing",
+    },
+    {
+        "name": "Schemas",
+        "description": "Manage extraction schemas for structured output",
+    },
+    {
+        "name": "Models",
+        "description": "BYOM (Bring Your Own Model) - register and manage custom models",
+    },
+    {
+        "name": "A/B Testing",
+        "description": "Compare model variants with metrics tracking",
+    },
+    {
+        "name": "API Keys",
+        "description": "Create, rotate, and manage API keys with scopes",
+    },
+    {
+        "name": "Teams",
+        "description": "Team and organization management with RBAC",
+    },
+    {
+        "name": "Billing",
+        "description": "Stripe billing, subscriptions, and usage tracking",
+    },
+    {
+        "name": "Audit",
+        "description": "Audit logs for compliance and security",
+    },
+]
 
 
 @asynccontextmanager
@@ -89,25 +130,47 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DeepSeek OCR API",
     description="""
-    Document OCR and structured extraction API powered by DeepSeek-VL2.
+## Document OCR and Structured Extraction API
 
-    ## Features
-    - Real-time document OCR extraction
-    - Structured output with custom schemas
-    - Async processing for large documents
-    - Batch processing from S3/GCS
-    - Webhook callbacks
-    - Rate limiting and usage quotas
-    - Model A/B testing
-    - Multi-tenant schema management
-    - Bring Your Own Model (BYOM) support
-    - Team management
-    - API key rotation and scopes
-    - Stripe billing integration
-    - Audit logging
+Powered by DeepSeek-VL2 vision-language models via vLLM.
+
+### Features
+- **Real-time extraction** - Synchronous OCR with immediate results
+- **Structured output** - Custom JSON schemas for data extraction
+- **Async processing** - Background jobs with webhook notifications
+- **Batch processing** - Process entire S3/GCS buckets
+- **BYOM** - Bring Your Own Model from HuggingFace or GCS
+- **Rate limiting** - Per-tenant RPM/RPD quotas
+- **A/B testing** - Compare model variants with metrics
+- **Teams** - Organization management with RBAC
+- **Billing** - Stripe integration with usage-based pricing
+- **Audit** - Compliance-ready action logging
+
+### Authentication
+All endpoints require API key authentication via the `X-API-Key` header:
+```
+X-API-Key: <tenant_id>:<secret>
+```
+
+### Rate Limits
+- Default: 60 RPM, 1000 RPD per tenant
+- Headers: `X-RateLimit-Remaining`, `Retry-After`
     """,
     version="1.0.0",
     lifespan=lifespan,
+    openapi_tags=tags_metadata,
+    contact={
+        "name": "DeepSeek OCR API Support",
+        "url": "https://github.com/dickiesanders/VLM-Batch-Deployment",
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+    servers=[
+        {"url": "http://localhost:8080", "description": "Local development"},
+        {"url": "https://api.example.com", "description": "Production"},
+    ],
 )
 
 # CORS middleware
@@ -119,16 +182,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(health_router)
-app.include_router(ocr_router)
-app.include_router(schemas_router)
-app.include_router(ab_testing_router)
-app.include_router(models_router)
-app.include_router(billing_router)
-app.include_router(teams_router)
-app.include_router(api_keys_router)
-app.include_router(audit_router)
+# Include routers with tags
+app.include_router(health_router, tags=["Health"])
+app.include_router(ocr_router, tags=["OCR"])
+app.include_router(schemas_router, tags=["Schemas"])
+app.include_router(ab_testing_router, tags=["A/B Testing"])
+app.include_router(models_router, tags=["Models"])
+app.include_router(billing_router, tags=["Billing"])
+app.include_router(teams_router, tags=["Teams"])
+app.include_router(api_keys_router, tags=["API Keys"])
+app.include_router(audit_router, tags=["Audit"])
 
 
 @app.get("/")
