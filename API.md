@@ -71,6 +71,25 @@ cd VLM-Batch-Deployment
 uv sync
 ```
 
+### Download Models (Required)
+
+**Important**: Models must be downloaded before starting the API for fast startup. The API will be slow on first run if models aren't pre-cached.
+
+```bash
+# Download your chosen model (do this once)
+huggingface-cli download deepseek-ai/deepseek-vl2-tiny
+
+# Or for better quality (requires more VRAM)
+huggingface-cli download deepseek-ai/deepseek-vl2-small
+```
+
+Models are cached to `~/.cache/huggingface/`. Download sizes:
+- `deepseek-vl2-tiny` - ~3GB
+- `deepseek-vl2-small` - ~8GB
+- `deepseek-vl2` - ~20GB+
+
+For production deployments, include the model in your Docker image or mount a volume with pre-downloaded weights.
+
 ### Run Locally
 
 ```bash
@@ -648,16 +667,39 @@ def verify_webhook(payload, signature, secret):
 
 ## Deployment
 
+### Pre-download Models for Production
+
+For fast container startup, pre-download models and mount as a volume:
+
+```bash
+# Create local cache directory
+mkdir -p ./model-cache
+
+# Download model to cache
+HF_HOME=./model-cache huggingface-cli download deepseek-ai/deepseek-vl2-tiny
+
+# Run container with mounted cache
+docker run -d \
+  --gpus all \
+  -p 8080:8080 \
+  -v $(pwd)/model-cache:/root/.cache/huggingface \
+  -e MODEL_NAME=deepseek-ai/deepseek-vl2-tiny \
+  deepseek-ocr-api:latest
+```
+
+Alternatively, bake models into your Docker image for serverless deployments (increases image size significantly).
+
 ### Docker
 
 ```bash
 # Build image
 docker build -f Dockerfile.api -t deepseek-ocr-api:latest .
 
-# Run with GPU
+# Run with GPU (with model cache mounted)
 docker run -d \
   --gpus all \
   -p 8080:8080 \
+  -v /path/to/model-cache:/root/.cache/huggingface \
   -e MODEL_NAME=deepseek-ai/deepseek-vl2-tiny \
   -e REDIS_URL=redis://redis:6379 \
   -e DATABASE_URL=postgresql://user:pass@db/ocr \
