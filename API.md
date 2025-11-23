@@ -709,31 +709,64 @@ docker run -d \
 
 ### Google Cloud Run (Recommended)
 
-1. **Configure Terraform**:
+Cloud Run is serverless, so models must be baked into the Docker image for fast cold starts.
+
+1. **Create Dockerfile with pre-downloaded model**:
+
+```dockerfile
+# Dockerfile.cloudrun
+FROM nvidia/cuda:12.1-runtime-ubuntu22.04
+
+# Install Python and dependencies
+RUN apt-get update && apt-get install -y python3.12 python3-pip git
+COPY . /app
+WORKDIR /app
+RUN pip install uv && uv sync
+
+# Pre-download model during build (this increases image size)
+ENV HF_HOME=/app/model-cache
+RUN huggingface-cli download deepseek-ai/deepseek-vl2-tiny
+
+# Set runtime environment
+ENV MODEL_NAME=deepseek-ai/deepseek-vl2-tiny
+ENV PORT=8080
+EXPOSE 8080
+
+CMD ["uv", "run", "python", "-m", "api.main"]
+```
+
+2. **Build with model baked in** (image will be ~10GB+):
+```bash
+PROJECT_ID=your-project
+REGION=us-central1
+
+# Build (takes a while to download model)
+docker build -f Dockerfile.cloudrun \
+  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/deepseek-ocr/api:latest .
+
+# Push to Artifact Registry
+docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/deepseek-ocr/api:latest
+```
+
+3. **Configure Terraform**:
 ```bash
 cd infra/cloudrun
 cp terraform.tfvars.example terraform.tfvars
 # Edit terraform.tfvars with your values
 ```
 
-2. **Build and push container**:
-```bash
-PROJECT_ID=your-project
-REGION=us-central1
-
-# Build
-docker build -f Dockerfile.api \
-  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/deepseek-ocr/api:latest .
-
-# Push
-docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/deepseek-ocr/api:latest
-```
-
-3. **Deploy**:
+4. **Deploy**:
 ```bash
 terraform init
 terraform apply
 ```
+
+**Cloud Run Settings** (in terraform.tfvars):
+- `cpu`: 4 (minimum for vLLM)
+- `memory`: 16Gi (for tiny model) or 32Gi (for small)
+- `gpu_type`: nvidia-l4
+- `min_instances`: 1 (keeps model warm, avoids cold starts)
+- `timeout`: 300s (for large documents)
 
 ### AWS EC2
 
