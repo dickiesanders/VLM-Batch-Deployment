@@ -1,6 +1,9 @@
 """Model registry for BYOM (Bring Your Own Model) support"""
 import logging
+import os
+import shutil
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
 from enum import Enum
 
@@ -8,11 +11,102 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
+# GCS model cache directory
+MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "/tmp/model-cache")
+
 
 class ModelSource(str, Enum):
     HUGGINGFACE = "huggingface"
     LOCAL = "local"
     EXTERNAL = "external"
+    GCS = "gcs"  # Google Cloud Storage
+
+
+class ModelLoader:
+    """Utility class for loading models from various sources"""
+
+    @staticmethod
+    def download_from_gcs(gcs_path: str, local_path: str) -> str:
+        """Download model from GCS to local cache
+
+        Args:
+            gcs_path: GCS path like gs://bucket/path/to/model
+            local_path: Local directory to download to
+
+        Returns:
+            Local path to downloaded model
+        """
+        from google.cloud import storage
+
+        # Parse GCS path
+        if not gcs_path.startswith("gs://"):
+            raise ValueError(f"Invalid GCS path: {gcs_path}")
+
+        path_parts = gcs_path[5:].split("/", 1)
+        bucket_name = path_parts[0]
+        prefix = path_parts[1] if len(path_parts) > 1 else ""
+
+        # Create local directory
+        local_dir = Path(local_path)
+        local_dir.mkdir(parents=True, exist_ok=True)
+
+        # Download from GCS
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blobs = bucket.list_blobs(prefix=prefix)
+
+        downloaded_files = 0
+        for blob in blobs:
+            # Get relative path from prefix
+            rel_path = blob.name[len(prefix):].lstrip("/")
+            if not rel_path:
+                continue
+
+            local_file = local_dir / rel_path
+            local_file.parent.mkdir(parents=True, exist_ok=True)
+
+            logger.info(f"Downloading {blob.name} to {local_file}")
+            blob.download_to_filename(str(local_file))
+            downloaded_files += 1
+
+        logger.info(f"Downloaded {downloaded_files} files from {gcs_path}")
+        return str(local_dir)
+
+    @staticmethod
+    def download_from_huggingface(model_id: str, token: Optional[str] = None) -> str:
+        """Download model from HuggingFace Hub
+
+        Args:
+            model_id: HuggingFace model ID
+            token: HF token for gated models
+
+        Returns:
+            Local path to downloaded model
+        """
+        from huggingface_hub import snapshot_download
+
+        logger.info(f"Downloading model {model_id} from HuggingFace")
+
+        local_dir = snapshot_download(
+            repo_id=model_id,
+            token=token,
+            cache_dir=MODEL_CACHE_DIR,
+        )
+
+        logger.info(f"Model downloaded to {local_dir}")
+        return local_dir
+
+    @staticmethod
+    def is_model_cached(model_id: str, source: "ModelSource") -> bool:
+        """Check if model is already cached locally"""
+        if source == ModelSource.GCS:
+            cache_path = Path(MODEL_CACHE_DIR) / model_id.replace("gs://", "").replace("/", "_")
+            return cache_path.exists()
+        elif source == ModelSource.HUGGINGFACE:
+            # HuggingFace uses its own cache management
+            cache_path = Path(MODEL_CACHE_DIR) / f"models--{model_id.replace('/', '--')}"
+            return cache_path.exists()
+        return False
 
 
 class ModelConfig(BaseModel):
@@ -200,24 +294,74 @@ class ModelRegistry:
                 "api_key": model.api_key,
             }
 
-        # Load vLLM engine for HuggingFace/local models
+        # Determine model path based on source
+        model_path = model.model_id
+
+        if model.source == ModelSource.GCS:
+            # Download from GCS if not cached
+            cache_name = model.model_id.replace("gs://", "").replace("/", "_")
+            local_path = str(Path(MODEL_CACHE_DIR) / cache_name)
+
+            if not Path(local_path).exists():
+                logger.info(f"Downloading model from GCS: {model.model_id}")
+                model_path = ModelLoader.download_from_gcs(model.model_id, local_path)
+            else:
+                logger.info(f"Using cached model from {local_path}")
+                model_path = local_path
+
+        elif model.source == ModelSource.HUGGINGFACE:
+            # HuggingFace models are downloaded automatically by vLLM
+            # but we can pre-download for better control
+            if not ModelLoader.is_model_cached(model.model_id, ModelSource.HUGGINGFACE):
+                logger.info(f"Pre-downloading model from HuggingFace: {model.model_id}")
+                model_path = ModelLoader.download_from_huggingface(
+                    model.model_id,
+                    model.hf_token
+                )
+            else:
+                model_path = model.model_id
+
+        # Load vLLM engine
         from vllm import LLM
 
-        logger.info(f"Loading model {model.name} ({model.model_id})")
+        logger.info(f"Loading model {model.name} from {model_path}")
 
         engine = LLM(
-            model=model.model_id,
+            model=model_path,
             gpu_memory_utilization=model.gpu_memory_utilization,
             max_num_seqs=model.max_num_seqs,
             max_model_len=model.max_model_len,
             trust_remote_code=True,
-            token=model.hf_token,
+            token=model.hf_token if model.source == ModelSource.HUGGINGFACE else None,
         )
 
         self._loaded_engines[model_id] = engine
         logger.info(f"Model {model.name} loaded successfully")
 
         return engine
+
+    def preload_model(self, model_id: str, tenant_id: str) -> bool:
+        """Pre-download model to cache without loading into GPU memory
+
+        Useful for warming up models before they're needed.
+        """
+        model = self.get(model_id, tenant_id)
+        if not model:
+            return False
+
+        if model.source == ModelSource.GCS:
+            cache_name = model.model_id.replace("gs://", "").replace("/", "_")
+            local_path = str(Path(MODEL_CACHE_DIR) / cache_name)
+            if not Path(local_path).exists():
+                ModelLoader.download_from_gcs(model.model_id, local_path)
+            return True
+
+        elif model.source == ModelSource.HUGGINGFACE:
+            if not ModelLoader.is_model_cached(model.model_id, ModelSource.HUGGINGFACE):
+                ModelLoader.download_from_huggingface(model.model_id, model.hf_token)
+            return True
+
+        return True
 
 
 # Global registry instance

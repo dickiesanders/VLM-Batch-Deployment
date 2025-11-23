@@ -50,6 +50,101 @@ Complete documentation for the DeepSeek OCR API - a real-time document OCR and s
        └──────────┘ └──────────┘ └──────────┘
 ```
 
+### Multi-Model Architecture
+
+The API supports multiple deployment patterns for model selection and BYOM:
+
+#### Model Sources
+
+| Source | Description | Use Case |
+|--------|-------------|----------|
+| `huggingface` | HuggingFace Hub models | Default models, public/private HF repos |
+| `gcs` | Google Cloud Storage | BYOM, custom fine-tuned models |
+| `local` | Local file path | Development, baked-in models |
+| `external` | External API endpoint | Third-party inference services |
+
+#### Cloud Run Deployment Patterns
+
+**1. Single Model (Simple)**
+- One model baked into image
+- Fast cold starts
+- ~10GB image size
+
+**2. Multiple Services (Recommended for Production)**
+```
+┌─────────────┐
+│   Router    │
+└──────┬──────┘
+       │
+   ┌───┼───┐
+   ▼   ▼   ▼
+┌────┐┌────┐┌────┐
+│tiny││small││full│  ← Separate Cloud Run services
+└────┘└────┘└────┘
+```
+- Route requests to appropriate service based on `model` parameter
+- Each service has one model baked in
+- Independent scaling per model
+
+**3. GCS Model Cache (Flexible, for BYOM)**
+```
+┌─────────────┐     ┌─────────────┐
+│ Cloud Run   │────▶│    GCS      │
+│   Service   │     │ Model Bucket│
+└─────────────┘     └─────────────┘
+```
+- Models stored in GCS bucket
+- Downloaded to container on first use
+- Cached in `/tmp/model-cache`
+- Slower first request, then fast
+
+#### BYOM (Bring Your Own Model)
+
+Users can register custom models from multiple sources:
+
+```bash
+# Register HuggingFace model
+curl -X POST http://localhost:8080/models \
+  -H "X-API-Key: tenant:secret" \
+  -d '{
+    "name": "my-fine-tuned-model",
+    "source": "huggingface",
+    "model_id": "myorg/custom-vlm",
+    "hf_token": "hf_xxx"
+  }'
+
+# Register GCS model
+curl -X POST http://localhost:8080/models \
+  -H "X-API-Key: tenant:secret" \
+  -d '{
+    "name": "custom-ocr-model",
+    "source": "gcs",
+    "model_id": "gs://my-bucket/models/custom-vlm"
+  }'
+```
+
+**GCS Model Upload** (for tenants):
+```bash
+# Upload model to GCS
+gsutil -m cp -r ./my-model gs://your-models-bucket/tenant-123/my-model/
+
+# Register in API
+curl -X POST http://localhost:8080/models \
+  -d '{
+    "name": "my-model",
+    "source": "gcs",
+    "model_id": "gs://your-models-bucket/tenant-123/my-model"
+  }'
+```
+
+#### Environment Variables for Multi-Model
+
+| Variable | Description |
+|----------|-------------|
+| `MODEL_CACHE_DIR` | Local cache for downloaded models (default: `/tmp/model-cache`) |
+| `GCS_MODELS_BUCKET` | Default GCS bucket for BYOM uploads |
+| `PRELOAD_MODELS` | Comma-separated model IDs to preload on startup |
+
 ---
 
 ## Quick Start

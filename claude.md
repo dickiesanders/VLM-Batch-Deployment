@@ -44,6 +44,27 @@ Real-time document OCR API using DeepSeek-VL2 via vLLM. Full SaaS solution with 
 - **Cloud Run primary**: Serverless GPU for cost efficiency
 - **Stripe billing**: Usage-based metered billing
 - **RBAC teams**: Owner > Admin > Member > Viewer permissions
+- **Multi-model support**: HuggingFace, GCS, local, external sources
+- **GCS model cache**: BYOM models downloaded on-demand from GCS
+
+## Multi-Model Architecture
+
+Model sources supported:
+- `huggingface` - HuggingFace Hub (default)
+- `gcs` - Google Cloud Storage (for BYOM)
+- `local` - Local file path
+- `external` - Third-party API endpoints
+
+Cloud Run patterns:
+1. **Single model** - Bake into image (~10GB)
+2. **Multiple services** - One service per model, route by parameter
+3. **GCS cache** - Download from GCS on first use, cache locally
+
+Key files:
+- `api/services/model_registry.py` - Model registration and loading
+- `ModelLoader` class handles GCS/HF downloads
+- `ModelRegistry.get_engine()` loads models on-demand
+- `ModelRegistry.preload_model()` pre-downloads without loading to GPU
 
 ## Development
 
@@ -95,6 +116,11 @@ Modify `Plan` enum and `PLAN_PRICES` in `api/services/billing.py`
 - `STORAGE_BACKEND`: s3, gcs, or local
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`: For S3
 - `GOOGLE_APPLICATION_CREDENTIALS`: For GCS
+
+### Models
+- `MODEL_CACHE_DIR`: Local cache for downloaded models (default: /tmp/model-cache)
+- `GCS_MODELS_BUCKET`: Default GCS bucket for BYOM uploads
+- `PRELOAD_MODELS`: Comma-separated model IDs to preload on startup
 
 ### Billing
 - `STRIPE_API_KEY`: Stripe secret key
